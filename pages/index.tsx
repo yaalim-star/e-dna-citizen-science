@@ -5,13 +5,10 @@ import { join } from "path";
 import pilot1Metadata from "../data/pilot1/medata.json";
 import { parseCSV, summarizeFishData, type FishData } from "@/lib/csv-utils";
 
-const GoogleMapComponent = dynamic(
-  () => import("../components/GoogleMap"),
-  {
-    ssr: false,
-    loading: () => <p>Loading map...</p>,
-  }
-);
+const GoogleMapComponent = dynamic(() => import("../components/GoogleMap"), {
+  ssr: false,
+  loading: () => <p>Loading map...</p>,
+});
 
 interface HomeProps {
   summary: string;
@@ -75,7 +72,7 @@ export default function Home({ summary, fishData }: HomeProps) {
     <main className="flex min-h-screen flex-col items-center p-8">
       <div className="z-10 max-w-7xl w-full items-center justify-between font-mono text-sm mb-8">
         <h1 className="text-4xl font-bold text-center mb-4">
-          e-DNA Citizen Science
+          E-DNA Citizen Science
         </h1>
       </div>
       <div className="w-full max-w-7xl rounded-lg overflow-hidden shadow-lg">
@@ -95,4 +92,3 @@ export default function Home({ summary, fishData }: HomeProps) {
     </main>
   );
 }
-
