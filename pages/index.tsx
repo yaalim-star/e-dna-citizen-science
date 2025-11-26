@@ -1,10 +1,49 @@
-import GoogleMapComponent from "./components/GoogleMap";
-import pilot1Metadata from "./data/pilot1/medata.json";
-import { readFileSync } from "fs";
+import dynamic from "next/dynamic";
+import type { GetServerSideProps } from "next";
+import { readFile } from "fs/promises";
 import { join } from "path";
-import { parseCSV, summarizeFishData } from "@/lib/csv-utils";
+import pilot1Metadata from "../data/pilot1/medata.json";
+import { parseCSV, summarizeFishData, type FishData } from "@/lib/csv-utils";
 
-export default function Home() {
+const GoogleMapComponent = dynamic(
+  () => import("../components/GoogleMap"),
+  {
+    ssr: false,
+    loading: () => <p>Loading map...</p>,
+  }
+);
+
+interface HomeProps {
+  summary: string;
+  fishData: FishData[];
+}
+
+// 서버 사이드에서 CSV 파일을 읽어서 props로 전달
+export const getServerSideProps: GetServerSideProps<HomeProps> = async () => {
+  try {
+    const csvPath = join(process.cwd(), "public", "data", "pilot1", "rows.csv");
+    const csvContent = await readFile(csvPath, "utf-8");
+    const fishData = parseCSV(csvContent);
+    const summary = summarizeFishData(fishData);
+
+    return {
+      props: {
+        summary,
+        fishData,
+      },
+    };
+  } catch (error) {
+    console.error("CSV 파일을 읽는 중 오류 발생:", error);
+    return {
+      props: {
+        summary: "데이터를 불러올 수 없습니다.",
+        fishData: [],
+      },
+    };
+  }
+};
+
+export default function Home({ summary, fishData }: HomeProps) {
   const apiKey =
     process.env.NEXT_PUBLIC_GOOGLE_MAP_API_KEY ||
     process.env.GOOGLE_MAP_API_KEY ||
@@ -15,19 +54,6 @@ export default function Home() {
     lat: pilot1Metadata.location.lat,
     lng: pilot1Metadata.location.lon,
   };
-
-  // rows.csv 파일 읽기 및 처리
-  let summary = "";
-  let fishData: ReturnType<typeof parseCSV> = [];
-  try {
-    const csvPath = join(process.cwd(), "app/data/pilot1/rows.csv");
-    const csvContent = readFileSync(csvPath, "utf-8");
-    fishData = parseCSV(csvContent);
-    summary = summarizeFishData(fishData);
-  } catch (error) {
-    console.error("CSV 파일을 읽는 중 오류 발생:", error);
-    summary = "데이터를 불러올 수 없습니다.";
-  }
 
   if (!apiKey) {
     return (
@@ -69,3 +95,4 @@ export default function Home() {
     </main>
   );
 }
+
