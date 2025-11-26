@@ -18,7 +18,7 @@ interface HomeProps {
 // 서버 사이드에서 CSV 파일을 읽어서 props로 전달
 export const getServerSideProps: GetServerSideProps<HomeProps> = async () => {
   try {
-    const csvPath = join(process.cwd(), "public", "data", "pilot1", "rows.csv");
+    const csvPath = join(process.cwd(), "data", "pilot1", "rows.csv");
     const csvContent = await readFile(csvPath, "utf-8");
     const fishData = parseCSV(csvContent);
     const summary = summarizeFishData(fishData);
