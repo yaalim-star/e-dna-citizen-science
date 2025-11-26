@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/workspace
+      - /workspace/node_modules
+      - /workspace/.next
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    # Dev Container가 연결될 때까지 컨테이너를 유지
+    command: sleep infinity
+    stdin_open: true
+    tty: true
+
