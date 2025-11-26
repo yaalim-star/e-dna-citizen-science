@@ -1,0 +1,55 @@
+FROM node:20-slim AS base
+
+# 의존성 설치 단계
+FROM base AS deps
+WORKDIR /app
+
+# pnpm 설치
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# package.json과 pnpm-lock.yaml 복사
+COPY package.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile
+
+# 빌드 단계
+FROM base AS builder
+WORKDIR /app
+
+# pnpm 설치
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# 환경 변수 설정 (빌드 시 필요)
+ARG NEXT_PUBLIC_GOOGLE_MAP_API_KEY
+ENV NEXT_PUBLIC_GOOGLE_MAP_API_KEY=$NEXT_PUBLIC_GOOGLE_MAP_API_KEY
+
+# 프로덕션 빌드
+RUN pnpm build
+
+# 프로덕션 이미지
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# pnpm 설치
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# 필요한 파일 복사
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.ts ./next.config.ts
+
+# 포트 노출
+EXPOSE 3000
+
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# 서버 실행
+CMD ["pnpm", "start"]
+

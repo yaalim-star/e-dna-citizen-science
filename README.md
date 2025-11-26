@@ -29,6 +29,31 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## 배포 (Deployment)
+
+웹사이트로 배포하는 방법은 [DEPLOYMENT.md](./DEPLOYMENT.md) 파일을 참고하세요.
+
+### 빠른 배포 (Vercel 추천)
+
+1. GitHub에 코드 푸시
+2. [Vercel](https://vercel.com)에 가입하고 프로젝트 연결
+3. 환경 변수 설정: `NEXT_PUBLIC_GOOGLE_MAP_API_KEY`
+4. 배포 완료!
+
+자세한 내용은 [DEPLOYMENT.md](./DEPLOYMENT.md)를 확인하세요.
+
+## 환경 변수
+
+프로젝트를 실행하기 전에 다음 환경 변수를 설정해야 합니다:
+
+- `NEXT_PUBLIC_GOOGLE_MAP_API_KEY`: Google Maps API 키 ([Google Cloud Console](https://console.cloud.google.com/)에서 발급)
+
+`.env.local` 파일을 생성하여 설정할 수 있습니다:
+
+```bash
+NEXT_PUBLIC_GOOGLE_MAP_API_KEY=your_api_key_here
+```
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
