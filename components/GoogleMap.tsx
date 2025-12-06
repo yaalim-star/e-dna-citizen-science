@@ -749,45 +749,36 @@ function MapContent({
   useEffect(() => {
     if (!mapInstance) return;
 
-    // idle 이벤트만 사용하여 지도가 완전히 렌더링된 후에만 bounds 업데이트
-    const idleListener = mapInstance.addListener("idle", updateBounds);
+    // 여러 이벤트에서 bounds 업데이트
+    const listeners: google.maps.MapsEventListener[] = [
+      mapInstance.addListener("bounds_changed", updateBounds),
+      mapInstance.addListener("idle", updateBounds),
+      mapInstance.addListener("zoom_changed", updateBounds),
+      mapInstance.addListener("center_changed", updateBounds),
+    ];
 
-    // 초기 bounds 설정 (약간의 지연 후)
-    const timeoutId = setTimeout(() => {
-      updateBounds();
-    }, 300);
+    // 초기 bounds 설정
+    updateBounds();
 
     // 컴포넌트 언마운트 시 리스너 제거
     return () => {
-      clearTimeout(timeoutId);
-      google.maps.event.removeListener(idleListener);
+      listeners.forEach((listener) => {
+        google.maps.event.removeListener(listener);
+      });
     };
   }, [mapInstance, updateBounds]);
 
   // 현재 bounds 안에 있는 마커만 필터링
-  // bounds가 null이면 빈 배열 반환 (지도가 로드되기 전에는 표시하지 않음)
   const visibleMarkers = useMemo(() => {
-    if (!mapBounds || !mapInstance) return [];
+    if (!mapBounds) return markers; // bounds가 없으면 모든 마커 표시
 
-    // 지도 컨테이너의 실제 크기를 기반으로 더 정확한 bounds 계산
-    const ne = mapBounds.getNorthEast();
-    const sw = mapBounds.getSouthWest();
-    const latRange = ne.lat() - sw.lat();
-    const lngRange = ne.lng() - sw.lng();
-    
-    // 더 큰 padding (20%)을 사용하여 실제 화면에 보이는 영역만 포함
-    // Google Maps의 bounds는 실제 viewport보다 넓기 때문에 더 많이 축소 필요
-    const padding = 0.20;
-    const adjustedBounds = new google.maps.LatLngBounds(
-      new google.maps.LatLng(sw.lat() + latRange * padding, sw.lng() + lngRange * padding),
-      new google.maps.LatLng(ne.lat() - latRange * padding, ne.lng() - lngRange * padding)
-    );
-
+    // 원본 bounds 사용 (padding 제거)
+    // Google Maps의 bounds는 이미 실제 viewport를 포함하므로 추가 축소 불필요
     return markers.filter((marker) => {
       const latLng = new google.maps.LatLng(marker.position.lat, marker.position.lng);
-      return adjustedBounds.contains(latLng);
+      return mapBounds.contains(latLng);
     });
-  }, [markers, mapBounds, mapInstance]);
+  }, [markers, mapBounds]);
 
   // 선택된 마커는 컬러, 선택되지 않은 마커는 흑백 아이콘 사용
   // 단, 아무것도 선택하지 않은 상태에서는 모든 마커가 컬러
