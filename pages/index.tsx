@@ -21,7 +21,7 @@ export const getServerSideProps: GetServerSideProps<HomeProps> = async () => {
     const csvPath = join(process.cwd(), "data", "pilot1", "rows.csv");
     const csvContent = await readFile(csvPath, "utf-8");
     const fishData = parseCSV(csvContent);
-    const summary = summarizeFishData(fishData);
+    const summary = summarizeFishData(fishData, pilot1Metadata.taxa);
 
     return {
       props: {
@@ -69,13 +69,13 @@ export default function Home({ summary, fishData }: HomeProps) {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center p-8">
-      <div className="z-10 max-w-7xl w-full items-center justify-between font-mono text-sm mb-8">
+    <main className="flex min-h-screen flex-col p-8">
+      <div className="z-10 w-full items-center justify-between font-mono text-sm mb-8">
         <h1 className="text-4xl font-bold text-center mb-4">
           E-DNA Citizen Science
         </h1>
       </div>
-      <div className="w-full max-w-7xl rounded-lg overflow-hidden shadow-lg">
+      <div className="w-full rounded-lg overflow-hidden shadow-lg">
         <GoogleMapComponent
           apiKey={apiKey}
           center={pilot1Location}
@@ -85,6 +85,7 @@ export default function Home({ summary, fishData }: HomeProps) {
               title: "Pilot 1",
               summary: summary,
               fishData: fishData,
+              taxa: pilot1Metadata.taxa,
             },
           ]}
         />

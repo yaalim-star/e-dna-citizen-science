@@ -2,9 +2,8 @@ import {
   GoogleMap,
   LoadScript,
   Marker,
-  OverlayView,
 } from "@react-google-maps/api";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   PieChart,
@@ -25,16 +24,70 @@ const defaultCenter = {
   lng: 126.978, // 서울시청 좌표
 };
 
-// 물고기 모양 SVG 아이콘 (Font Awesome Fish)
-const fishIcon = {
-  path: "M546.2 9.7c-5.6-12.5-21.6-13-28.3-1.2C486.9 62.4 431.4 96 368 96h-80C182 96 96 182 96 288c0 7 .8 13.7 1.5 20.5C161.3 262.2 253.4 224 384 224c8.8 0 16 7.2 16 16s-7.2 16-16 16C253.4 256 161.3 293.8 97.5 343.5c-.8 6.8-1.5 13.5-1.5 20.5 0 106 86 192 192 192h80c63.4 0 118.9 33.6 149.9 87.5 6.7 11.8 22.7 11.3 28.3-1.2 5.5-12.3 1.2-27-13-31-34.2-9.6-58.3-41.3-58.3-76.9V107.7c0-35.6 24.1-67.3 58.3-76.9 14.2-4 18.5-18.7 13-31zM352 352c-17.7 0-32-14.3-32-32s14.3-32 32-32 32 14.3 32 32-14.3 32-32 32z",
-  fillColor: "#4285F4",
-  fillOpacity: 1,
-  strokeColor: "#ffffff",
-  strokeWeight: 2,
-  scale: 0.06,
-  anchor: { x: 288, y: 256 },
-} as any;
+// 귀여운 만화 스타일 물고기 SVG 아이콘
+// SVG를 data URL로 변환하여 사용 (useMemo로 최적화)
+const getFishIcon = () => {
+  const svg = `
+    <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="fishShadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.3"/>
+        </filter>
+      </defs>
+      <g filter="url(#fishShadow)">
+        <!-- 꼬리 -->
+        <path d="M 38 24 C 42 18 46 18 46 24 C 46 30 42 30 38 24 Z" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+        
+        <!-- 몸체 (둥근 모양) -->
+        <ellipse cx="22" cy="24" rx="16" ry="13" fill="#4285F4" stroke="#ffffff" stroke-width="1.5"/>
+        
+        <!-- 등 지느러미 -->
+        <path d="M 20 11 C 18 6 26 6 26 11" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+        
+        <!-- 배 지느러미 -->
+        <path d="M 20 37 C 18 42 26 42 26 37" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+        
+        <!-- 가슴 지느러미 -->
+        <path d="M 24 28 C 22 30 22 34 26 32" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+
+        <!-- 흰색 줄무늬 (니모 특징) -->
+        <path d="M 17 12 C 14 18 14 30 17 36" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/>
+        <path d="M 29 12 C 27 18 27 30 29 36" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/>
+
+        <!-- 큰 눈 -->
+        <circle cx="14" cy="21" r="4.5" fill="#ffffff"/>
+        <circle cx="14" cy="21" r="2.5" fill="#000000"/>
+        <circle cx="15.5" cy="20" r="1" fill="#ffffff" opacity="0.8"/>
+        
+        <!-- 미소 -->
+        <path d="M 12 27 C 14 29 16 27 16 27" stroke="#ffffff" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      </g>
+    </svg>
+  `.trim();
+  
+  return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+};
+
+// fishIcon을 함수로 변경하여 필요할 때 생성
+const createFishIcon = () => {
+  if (typeof window !== 'undefined' && window.google?.maps) {
+    return {
+      url: getFishIcon(),
+      scaledSize: new google.maps.Size(48, 48),
+      anchor: new google.maps.Point(24, 24),
+    };
+  }
+  // Google Maps API가 로드되지 않았을 때는 기본 path 사용
+  return {
+    path: "M 0,0 C -15,-20 -25,-15 -30,-5 C -35,5 -30,15 -20,20 C -10,25 0,25 10,20 C 20,15 25,5 20,-5 C 15,-15 5,-20 0,0 Z",
+    fillColor: "#4285F4",
+    fillOpacity: 1,
+    strokeColor: "#ffffff",
+    strokeWeight: 1.5,
+    scale: 0.8,
+    anchor: { x: 0, y: 0 },
+  } as any;
+};
 
 interface MarkerData {
   position: { lat: number; lng: number };
@@ -42,6 +95,7 @@ interface MarkerData {
   title?: string;
   summary?: string;
   fishData?: FishData[];
+  taxa?: string;
 }
 
 interface GoogleMapComponentProps {
@@ -49,6 +103,18 @@ interface GoogleMapComponentProps {
   center?: { lat: number; lng: number };
   zoom?: number;
   markers?: MarkerData[];
+}
+
+// taxa를 한국어로 변환하는 함수
+function translateTaxa(taxa: string): string {
+  const taxaMap: Record<string, string> = {
+    'Actinopterygii': '조기어류',
+    'Chondrichthyes': '연골어류',
+    'Sarcopterygii': '육기어류',
+    'Agnatha': '무악류',
+  };
+  
+  return taxaMap[taxa] || taxa;
 }
 
 // 차트 색상 팔레트
@@ -101,21 +167,78 @@ function PieChartComponent({ fishData }: { fishData: FishData[] }) {
   const totalReads = fishData.reduce((sum, fish) => sum + fish.reads_count, 0);
 
   return (
-    <div className="w-full space-y-4">
-      <ResponsiveContainer width="100%" height={240}>
-        <PieChart>
+    <div className="w-full">
+      <ResponsiveContainer width="100%" height={300}>
+        <PieChart margin={{ top: 30, right: 70, bottom: 20, left: 70 }}>
           <Pie
             data={chartData}
             cx="50%"
             cy="50%"
             labelLine={false}
-            label={({ name, percent }: any) => {
+            label={({ name, percent, cx, cy, midAngle, innerRadius, outerRadius, payload }: any) => {
               const percentageValue = (percent || 0) * 100;
+              if (percentageValue <= 3) return "";
+              
               const percentage = percentageValue.toFixed(1);
-              return percentageValue > 3 ? `${name}\n${percentage}%` : "";
+              const RADIAN = Math.PI / 180;
+              
+              // 각 세그먼트의 중앙 각도에 정확히 맞춰 레이블 배치
+              // midAngle은 이미 각 세그먼트의 중앙 각도를 나타냄
+              const labelRadius = outerRadius + 10; // 차트 외부에 더 가깝게 배치
+              const fontSize = 12;
+              
+              // 각도 계산 (midAngle은 도 단위이므로 라디안으로 변환)
+              const angle = -midAngle * RADIAN;
+              
+              // 각 세그먼트의 중앙 방향으로 레이블 위치 계산
+              const x = cx + labelRadius * Math.cos(angle);
+              const y = cy + labelRadius * Math.sin(angle);
+              
+              // x 위치에 따라 텍스트 정렬 방향 결정
+              const textAnchor = x > cx ? "start" : "end";
+              
+              // 데이터 색상 가져오기
+              const dataIndex = chartData.findIndex((d) => d.name === name);
+              const labelColor = dataIndex >= 0 ? COLORS[dataIndex % COLORS.length] : "#374151";
+              
+              return (
+                <g>
+                  {/* 흰색 테두리 텍스트 (배경) */}
+                  <text
+                    x={x}
+                    y={y}
+                    fill="white"
+                    stroke="white"
+                    strokeWidth={4}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    textAnchor={textAnchor}
+                    dominantBaseline="central"
+                    fontSize={fontSize}
+                    fontWeight={600}
+                    opacity={0.9}
+                  >
+                    <tspan x={x} dx={x > cx ? 5 : -5} dy="-5">{name}</tspan>
+                    <tspan x={x} dx={x > cx ? 5 : -5} dy="16">{percentage}%</tspan>
+                  </text>
+                  {/* 실제 색상 텍스트 (전경) */}
+                  <text
+                    x={x}
+                    y={y}
+                    fill={labelColor}
+                    textAnchor={textAnchor}
+                    dominantBaseline="central"
+                    fontSize={fontSize}
+                    fontWeight={600}
+                  >
+                    <tspan x={x} dx={x > cx ? 5 : -5} dy="-5">{name}</tspan>
+                    <tspan x={x} dx={x > cx ? 5 : -5} dy="16">{percentage}%</tspan>
+                  </text>
+                </g>
+              );
             }}
-            outerRadius={85}
-            innerRadius={30}
+            outerRadius={100}
+            innerRadius={50}
             fill="#8884d8"
             dataKey="value"
             stroke="#fff"
@@ -156,7 +279,7 @@ function PieChartComponent({ fishData }: { fishData: FishData[] }) {
       </ResponsiveContainer>
 
       {/* 범례 */}
-      <div className="grid grid-cols-2 gap-2 text-xs">
+      <div className="grid grid-cols-2 gap-2 text-xs mt-2">
         {chartData.slice(0, 6).map((entry, index) => (
           <div key={index} className="flex items-center gap-2">
             <div
@@ -179,170 +302,280 @@ function PieChartComponent({ fishData }: { fishData: FishData[] }) {
 }
 
 function TooltipOverlay({
-  position,
   title,
-  summary,
   fishData,
   onClose,
 }: {
-  position: { lat: number; lng: number };
+  title?: string;
+  fishData?: FishData[];
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative bg-white text-gray-900",
+        "rounded-xl border border-gray-200 shadow-2xl",
+        "px-6 py-4 min-w-[360px] max-w-[420px]",
+        "animate-in fade-in-0 zoom-in-95",
+        "pointer-events-auto flex flex-col",
+        "backdrop-blur-sm"
+      )}
+      onWheel={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+    >
+      {/* 닫기 버튼 */}
+      <button
+        onClick={onClose}
+        className="absolute top-3 right-3 w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 flex items-center justify-center transition-colors z-20 shadow-sm"
+        aria-label="닫기"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+
+      {/* 제목 */}
+      <div className="pr-8 mb-2">
+        <h3 className="text-xl font-bold text-gray-900">
+          {title || "어류 정보"}
+        </h3>
+      </div>
+
+      {/* 파이 차트와 통계 */}
+      {fishData && fishData.length > 0 && (
+        <>
+          <PieChartComponent fishData={fishData} />
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+              <div className="text-xs text-blue-600 font-medium mb-1">
+                발견된 종류
+              </div>
+              <div className="text-2xl font-bold text-blue-900">
+                {fishData.length}
+                <span className="text-sm font-normal text-blue-700 ml-1">
+                  종
+                </span>
+              </div>
+            </div>
+            <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+              <div className="text-xs text-green-600 font-medium mb-1">
+                총 읽기 수
+              </div>
+              <div className="text-2xl font-bold text-green-900">
+                {fishData.reduce((sum, fish) => sum + fish.reads_count, 0).toLocaleString()}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MarkerListPanel({
+  markers,
+  onMarkerClick,
+}: {
+  markers: MarkerData[];
+  onMarkerClick: (index: number) => void;
+}) {
+  return (
+    <div className="h-full bg-white border border-gray-200 rounded-lg flex flex-col">
+      <div className="p-6 border-b border-gray-200">
+        <h2 className="text-xl font-bold text-gray-900">
+          마커 목록
+        </h2>
+        <p className="text-xs text-gray-500 mt-1">
+          {markers.length}개의 마커
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
+        {markers.length === 0 ? (
+          <div className="text-center text-gray-400 py-8">
+            <p className="text-xs">표시할 마커가 없습니다</p>
+          </div>
+        ) : (
+          markers.map((marker, index) => {
+            const speciesCount = marker.fishData?.length || 0;
+            const totalReads =
+              marker.fishData?.reduce(
+                (sum, fish) => sum + fish.reads_count,
+                0
+              ) || 0;
+
+            return (
+              <button
+                key={index}
+                onClick={() => onMarkerClick(index)}
+                className="w-full text-left bg-gray-50 hover:bg-gray-100 rounded-lg p-3 border border-gray-200 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1"></div>
+                      <span className="text-sm font-semibold text-gray-900 truncate">
+                        {marker.title || marker.label || `마커 ${index + 1}`}
+                      </span>
+                    </div>
+                    <div className="ml-4 space-y-0.5">
+                      {marker.taxa && (
+                        <div className="text-[10px] text-blue-600 font-medium">
+                          {translateTaxa(marker.taxa)}
+                        </div>
+                      )}
+                      {marker.fishData && marker.fishData.length > 0 && (
+                        <div className="text-[10px] text-gray-600">
+                          {speciesCount}종 · {totalReads.toLocaleString()} 읽기
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 text-gray-400 flex-shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailPanel({
+  title,
+  summary,
+  fishData,
+}: {
   title?: string;
   summary?: string;
   fishData?: FishData[];
-  onClose: () => void;
 }) {
   const totalReads =
     fishData?.reduce((sum, fish) => sum + fish.reads_count, 0) || 0;
   const speciesCount = fishData?.length || 0;
   const topSpecies = fishData
-    ? [...fishData].sort((a, b) => b.reads_count - a.reads_count).slice(0, 3)
+    ? [...fishData].sort((a, b) => b.reads_count - a.reads_count)
     : [];
 
   return (
-    <OverlayView
-      position={position}
-      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-      getPixelPositionOffset={(width, height) => ({
-        x: -(width / 2),
-        y: -(height + 10),
-      })}
-    >
-      <div
-        className={cn(
-          "relative bg-white text-gray-900",
-          "rounded-xl border border-gray-200 shadow-2xl",
-          "px-6 py-5 min-w-[360px] max-w-[420px] max-h-[600px]",
-          "animate-in fade-in-0 zoom-in-95",
-          "pointer-events-auto flex flex-col",
-          "backdrop-blur-sm"
-        )}
-        onWheel={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onTouchMove={(e) => e.stopPropagation()}
-      >
-        {/* 닫기 버튼 */}
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 flex items-center justify-center transition-colors z-20 shadow-sm"
-          aria-label="닫기"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2.5}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
+    <div className="h-full bg-white border border-gray-200 rounded-lg flex flex-col">
+      <div className="p-6 border-b border-gray-200">
+        <h2 className="text-xl font-bold text-gray-900">
+          {title || "상세 정보"}
+        </h2>
+      </div>
 
-        {/* 제목 */}
-        <div className="pr-8 mb-4">
-          <h3 className="text-xl font-bold text-gray-900">
-            {title || "어류 정보"}
-          </h3>
-        </div>
-
-        {/* 파이 차트 */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+        {/* 통계 정보 */}
         {fishData && fishData.length > 0 && (
-          <div className="mb-5 flex-shrink-0 border-b border-gray-100 pb-5">
-            <PieChartComponent fishData={fishData} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+              <div className="text-[10px] text-blue-600 font-medium mb-1">
+                발견된 종류
+              </div>
+              <div className="text-xl font-bold text-blue-900">
+                {speciesCount}
+                <span className="text-xs font-normal text-blue-700 ml-1">
+                  종
+                </span>
+              </div>
+            </div>
+            <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+              <div className="text-[10px] text-green-600 font-medium mb-1">
+                총 읽기 수
+              </div>
+              <div className="text-xl font-bold text-green-900">
+                {totalReads.toLocaleString()}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* 통계 정보 */}
-        {fishData && fishData.length > 0 && (
-          <div className="space-y-4 mb-4 flex-shrink-0">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                <div className="text-xs text-blue-600 font-medium mb-1">
-                  발견된 종류
-                </div>
-                <div className="text-2xl font-bold text-blue-900">
-                  {speciesCount}
-                  <span className="text-sm font-normal text-blue-700 ml-1">
-                    종
-                  </span>
-                </div>
-              </div>
-              <div className="bg-green-50 rounded-lg p-3 border border-green-100">
-                <div className="text-xs text-green-600 font-medium mb-1">
-                  총 읽기 수
-                </div>
-                <div className="text-2xl font-bold text-green-900">
-                  {totalReads.toLocaleString()}
-                </div>
-              </div>
+        {/* 주요 종류 */}
+        {topSpecies.length > 0 && (
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+            <div className="text-xs font-semibold text-gray-700 mb-3">
+              주요 종류
             </div>
-
-            {/* 주요 종류 */}
-            {topSpecies.length > 0 && (
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                <div className="text-sm font-semibold text-gray-700 mb-3">
-                  주요 종류
-                </div>
-                <div className="space-y-2">
-                  {topSpecies.map((fish, index) => {
-                    const percentage = (
-                      (fish.reads_count / totalReads) *
-                      100
-                    ).toFixed(1);
-                    return (
-                      <div
-                        key={index}
-                        className="flex items-start justify-between gap-3"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-gray-500 w-4">
-                              {index + 1}.
-                            </span>
-                            <span className="font-semibold text-gray-900">
-                              {fish.common_name}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-600 ml-6 mt-0.5">
-                            {fish.scientific_name}
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-semibold text-gray-900">
-                            {fish.reads_count.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {percentage}%
-                          </div>
-                        </div>
+            <div className="space-y-2">
+              {topSpecies.map((fish, index) => {
+                const percentage = (
+                  (fish.reads_count / totalReads) *
+                  100
+                ).toFixed(1);
+                return (
+                  <div
+                    key={index}
+                    className="flex items-start justify-between gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-semibold text-gray-500 w-4">
+                          {index + 1}.
+                        </span>
+                        <span className="text-sm font-semibold text-gray-900">
+                          {fish.common_name}
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      <div className="text-[10px] text-gray-600 ml-6 mt-0.5">
+                        {fish.scientific_name}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xs font-semibold text-gray-900">
+                        {fish.reads_count.toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        {percentage}%
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
         {/* 요약 텍스트 */}
         {summary && (
-          <div
-            className="text-sm text-gray-600 whitespace-pre-line overflow-y-auto flex-1 max-h-[200px] pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
-            onWheel={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchMove={(e) => e.stopPropagation()}
-          >
-            {summary}
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+            <div className="text-xs font-semibold text-gray-700 mb-3">
+              요약
+            </div>
+            <div className="text-xs text-gray-600 whitespace-pre-line">
+              {summary}
+            </div>
           </div>
         )}
       </div>
-    </OverlayView>
+    </div>
   );
 }
 
@@ -359,64 +592,152 @@ function MapContent({
   selectedMarkerIndex: number | null;
   setSelectedMarkerIndex: (index: number | null) => void;
 }) {
+  const selectedMarker = selectedMarkerIndex !== null ? markers[selectedMarkerIndex] : null;
+  const [mapBounds, setMapBounds] = useState<google.maps.LatLngBounds | null>(null);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+
+  // 지도 bounds 업데이트 함수
+  const updateBounds = useMemo(
+    () => () => {
+      if (mapInstance) {
+        const bounds = mapInstance.getBounds();
+        if (bounds) {
+          setMapBounds(bounds);
+        }
+      }
+    },
+    [mapInstance]
+  );
+
+  // 지도 로드 시 map 인스턴스 저장
+  const onMapLoad = (map: google.maps.Map) => {
+    setMapInstance(map);
+  };
+
+  // 지도 이벤트 리스너 등록 및 정리
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    const listeners: google.maps.MapsEventListener[] = [
+      mapInstance.addListener("bounds_changed", updateBounds),
+      mapInstance.addListener("idle", updateBounds),
+      mapInstance.addListener("zoom_changed", updateBounds),
+      mapInstance.addListener("center_changed", updateBounds),
+    ];
+
+    // 초기 bounds 설정
+    updateBounds();
+
+    // 컴포넌트 언마운트 시 리스너 제거
+    return () => {
+      listeners.forEach((listener) => {
+        google.maps.event.removeListener(listener);
+      });
+    };
+  }, [mapInstance, updateBounds]);
+
+  // 현재 bounds 안에 있는 마커만 필터링
+  const visibleMarkers = useMemo(() => {
+    if (!mapBounds) return markers;
+
+    return markers.filter((marker) => {
+      const latLng = new google.maps.LatLng(marker.position.lat, marker.position.lng);
+      return mapBounds.contains(latLng);
+    });
+  }, [markers, mapBounds]);
+
+  // 물고기 아이콘 생성 (한 번만 생성)
+  const fishIconInstance = useMemo(() => {
+    return createFishIcon();
+  }, []);
+
   return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={center}
-      zoom={zoom}
-      onClick={() => {
-        setSelectedMarkerIndex(null);
-      }}
-      options={{
-        zoomControl: true,
-        streetViewControl: false,
-        mapTypeControl: false,
-        fullscreenControl: false,
-        gestureHandling: "greedy",
-        styles: [
-          {
-            featureType: "poi",
-            elementType: "labels",
-            stylers: [{ visibility: "off" }],
-          },
-          {
-            featureType: "landscape",
-            elementType: "labels",
-            stylers: [{ visibility: "off" }],
-          },
-          {
-            featureType: "road",
-            elementType: "labels",
-            stylers: [{ visibility: "off" }],
-          },
-        ],
-      }}
-    >
-      {markers.map((marker, index) => (
-        <Marker
-          key={index}
-          position={marker.position}
-          icon={fishIcon}
-          title={marker.title || marker.label}
+    <div className="flex h-[600px] gap-4">
+      {/* 지도 영역 */}
+      <div className="relative flex-1" style={{ height: "600px" }}>
+        <GoogleMap
+          mapContainerStyle={{ width: "100%", height: "100%" }}
+          center={center}
+          zoom={zoom}
+          onLoad={onMapLoad}
           onClick={() => {
-            setSelectedMarkerIndex(index);
+            setSelectedMarkerIndex(null);
           }}
-        />
-      ))}
-      {selectedMarkerIndex !== null &&
-        markers[selectedMarkerIndex]?.summary && (
-          <TooltipOverlay
-            position={markers[selectedMarkerIndex].position}
-            title={
-              markers[selectedMarkerIndex].title ||
-              markers[selectedMarkerIndex].label
-            }
-            summary={markers[selectedMarkerIndex].summary}
-            fishData={markers[selectedMarkerIndex].fishData}
-            onClose={() => setSelectedMarkerIndex(null)}
+          options={{
+            zoomControl: true,
+            streetViewControl: false,
+            mapTypeControl: false,
+            fullscreenControl: false,
+            gestureHandling: "greedy",
+            styles: [
+              {
+                featureType: "poi",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }],
+              },
+              {
+                featureType: "landscape",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }],
+              },
+              {
+                featureType: "road",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }],
+              },
+            ],
+          }}
+        >
+          {markers.map((marker, index) => (
+            <Marker
+              key={index}
+              position={marker.position}
+              icon={fishIconInstance}
+              title={marker.title || marker.label}
+              onClick={() => {
+                setSelectedMarkerIndex(index);
+              }}
+            />
+          ))}
+        </GoogleMap>
+        {selectedMarkerIndex !== null && selectedMarker && (
+          <div className="absolute top-4 right-4 z-50">
+            <TooltipOverlay
+              title={selectedMarker.title || selectedMarker.label}
+              fishData={selectedMarker.fishData}
+              onClose={() => setSelectedMarkerIndex(null)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 오른쪽 상세 정보 패널 - 항상 표시 */}
+      <div className="w-[17.6rem] flex-shrink-0">
+        {selectedMarker ? (
+          <DetailPanel
+            title={selectedMarker.title || selectedMarker.label}
+            summary={selectedMarker.summary}
+            fishData={selectedMarker.fishData}
+          />
+        ) : (
+          <MarkerListPanel
+            markers={visibleMarkers}
+            onMarkerClick={(index) => {
+              // visibleMarkers의 인덱스를 원본 markers의 인덱스로 변환
+              const visibleMarker = visibleMarkers[index];
+              const originalIndex = markers.findIndex(
+                (m) =>
+                  m.position.lat === visibleMarker.position.lat &&
+                  m.position.lng === visibleMarker.position.lng
+              );
+              if (originalIndex !== -1) {
+                setSelectedMarkerIndex(originalIndex);
+              }
+            }}
           />
         )}
-    </GoogleMap>
+      </div>
+    </div>
   );
 }
 
