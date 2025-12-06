@@ -1,8 +1,7 @@
 import dynamic from "next/dynamic";
 import type { GetServerSideProps } from "next";
-import { readFile } from "fs/promises";
+import { readFile, readdir } from "fs/promises";
 import { join } from "path";
-import pilot1Metadata from "../data/pilot1/medata.json";
 import { parseCSV, summarizeFishData, type FishData } from "@/lib/csv-utils";
 
 const GoogleMapComponent = dynamic(() => import("../components/GoogleMap"), {
@@ -10,47 +9,119 @@ const GoogleMapComponent = dynamic(() => import("../components/GoogleMap"), {
   loading: () => <p>Loading map...</p>,
 });
 
-interface HomeProps {
+interface PlaceData {
   summary: string;
   fishData: FishData[];
+  metadata: {
+    location: {
+      lat: number;
+      lon: number;
+    };
+    taxa: string;
+    sample_name?: string;
+  };
+}
+
+interface HomeProps {
+  places: Array<{
+    placeName: string;
+    data: PlaceData;
+  }>;
 }
 
 // 서버 사이드에서 CSV 파일을 읽어서 props로 전달
 export const getServerSideProps: GetServerSideProps<HomeProps> = async () => {
   try {
-    const csvPath = join(process.cwd(), "data", "pilot1", "rows.csv");
-    const csvContent = await readFile(csvPath, "utf-8");
-    const fishData = parseCSV(csvContent);
-    const summary = summarizeFishData(fishData, pilot1Metadata.taxa);
+    const dataDir = join(process.cwd(), "data");
+    const dirs = await readdir(dataDir, { withFileTypes: true });
+    
+    // place로 시작하는 폴더만 필터링
+    const placeDirs = dirs
+      .filter((dirent) => dirent.isDirectory() && dirent.name.startsWith("place"))
+      .map((dirent) => dirent.name)
+      .sort(); // place1, place2, ... 순서로 정렬
+
+    const places = await Promise.all(
+      placeDirs.map(async (placeName) => {
+        try {
+          const metadataPath = join(dataDir, placeName, "medata.json");
+          const csvPath = join(dataDir, placeName, "rows.csv");
+
+          const [metadataContent, csvContent] = await Promise.all([
+            readFile(metadataPath, "utf-8"),
+            readFile(csvPath, "utf-8"),
+          ]);
+
+          const metadata = JSON.parse(metadataContent);
+          const fishData = parseCSV(csvContent);
+          const summary = summarizeFishData(fishData, metadata.taxa);
+
+          return {
+            placeName,
+            data: {
+              summary,
+              fishData,
+              metadata,
+            },
+          };
+        } catch (error) {
+          console.error(`Error loading ${placeName}:`, error);
+          return null;
+        }
+      })
+    );
+
+    // null 값 제거
+    const validPlaces = places.filter((place) => place !== null) as Array<{
+      placeName: string;
+      data: PlaceData;
+    }>;
 
     return {
       props: {
-        summary,
-        fishData,
+        places: validPlaces,
       },
     };
   } catch (error) {
     console.error("CSV 파일을 읽는 중 오류 발생:", error);
     return {
       props: {
-        summary: "데이터를 불러올 수 없습니다.",
-        fishData: [],
+        places: [],
       },
     };
   }
 };
 
-export default function Home({ summary, fishData }: HomeProps) {
+export default function Home({ places }: HomeProps) {
   const apiKey =
     process.env.NEXT_PUBLIC_GOOGLE_MAP_API_KEY ||
     process.env.GOOGLE_MAP_API_KEY ||
     "";
 
-  // pilot1 위치 정보
-  const pilot1Location = {
-    lat: pilot1Metadata.location.lat,
-    lng: pilot1Metadata.location.lon,
-  };
+  // 모든 마커 생성
+  const markers = places.map((place) => ({
+    position: {
+      lat: place.data.metadata.location.lat,
+      lng: place.data.metadata.location.lon,
+    },
+    title: place.placeName,
+    summary: place.data.summary,
+    fishData: place.data.fishData,
+    taxa: place.data.metadata.taxa,
+  }));
+
+  // 모든 마커의 중심점 계산
+  const centerLocation =
+    markers.length > 0
+      ? {
+          lat:
+            markers.reduce((sum, m) => sum + m.position.lat, 0) /
+            markers.length,
+          lng:
+            markers.reduce((sum, m) => sum + m.position.lng, 0) /
+            markers.length,
+        }
+      : { lat: 37.4, lng: 127.1 };
 
   if (!apiKey) {
     return (
@@ -70,24 +141,16 @@ export default function Home({ summary, fishData }: HomeProps) {
 
   return (
     <main className="flex min-h-screen flex-col p-8">
-      <div className="z-10 w-full items-center justify-between font-mono text-sm mb-8">
-        <h1 className="text-4xl font-bold text-center mb-4">
+      <div className="z-10 w-full items-center justify-between text-sm mb-2">
+        <h1 className="text-3xl font-bold text-center mb-2">
           E-DNA Citizen Science
         </h1>
       </div>
       <div className="w-full rounded-lg overflow-hidden shadow-lg">
         <GoogleMapComponent
           apiKey={apiKey}
-          center={pilot1Location}
-          markers={[
-            {
-              position: pilot1Location,
-              title: "Pilot 1",
-              summary: summary,
-              fishData: fishData,
-              taxa: pilot1Metadata.taxa,
-            },
-          ]}
+          center={centerLocation}
+          markers={markers}
         />
       </div>
     </main>

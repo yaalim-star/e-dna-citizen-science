@@ -26,7 +26,12 @@ const defaultCenter = {
 
 // 귀여운 만화 스타일 물고기 SVG 아이콘
 // SVG를 data URL로 변환하여 사용 (useMemo로 최적화)
-const getFishIcon = () => {
+const getFishIcon = (isGrayscale: boolean = false) => {
+  // 흑백일 경우 회색 톤 사용
+  const fillColor = isGrayscale ? "#808080" : "#4285F4";
+  const strokeColor = isGrayscale ? "#CCCCCC" : "#ffffff";
+  const eyeColor = isGrayscale ? "#666666" : "#000000";
+  
   const svg = `
     <svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -36,31 +41,31 @@ const getFishIcon = () => {
       </defs>
       <g filter="url(#fishShadow)">
         <!-- 꼬리 -->
-        <path d="M 38 24 C 42 18 46 18 46 24 C 46 30 42 30 38 24 Z" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M 38 24 C 42 18 46 18 46 24 C 46 30 42 30 38 24 Z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5" stroke-linejoin="round"/>
         
         <!-- 몸체 (둥근 모양) -->
-        <ellipse cx="22" cy="24" rx="16" ry="13" fill="#4285F4" stroke="#ffffff" stroke-width="1.5"/>
+        <ellipse cx="22" cy="24" rx="16" ry="13" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5"/>
         
         <!-- 등 지느러미 -->
-        <path d="M 20 11 C 18 6 26 6 26 11" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M 20 11 C 18 6 26 6 26 11" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5" stroke-linejoin="round"/>
         
         <!-- 배 지느러미 -->
-        <path d="M 20 37 C 18 42 26 42 26 37" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M 20 37 C 18 42 26 42 26 37" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5" stroke-linejoin="round"/>
         
         <!-- 가슴 지느러미 -->
-        <path d="M 24 28 C 22 30 22 34 26 32" fill="#4285F4" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M 24 28 C 22 30 22 34 26 32" fill="${fillColor}" stroke="${strokeColor}" stroke-width="1.5" stroke-linejoin="round"/>
 
         <!-- 흰색 줄무늬 (니모 특징) -->
-        <path d="M 17 12 C 14 18 14 30 17 36" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/>
-        <path d="M 29 12 C 27 18 27 30 29 36" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/>
+        <path d="M 17 12 C 14 18 14 30 17 36" stroke="${strokeColor}" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/>
+        <path d="M 29 12 C 27 18 27 30 29 36" stroke="${strokeColor}" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.9"/>
 
         <!-- 큰 눈 -->
-        <circle cx="14" cy="21" r="4.5" fill="#ffffff"/>
-        <circle cx="14" cy="21" r="2.5" fill="#000000"/>
-        <circle cx="15.5" cy="20" r="1" fill="#ffffff" opacity="0.8"/>
+        <circle cx="14" cy="21" r="4.5" fill="${strokeColor}"/>
+        <circle cx="14" cy="21" r="2.5" fill="${eyeColor}"/>
+        <circle cx="15.5" cy="20" r="1" fill="${strokeColor}" opacity="0.8"/>
         
         <!-- 미소 -->
-        <path d="M 12 27 C 14 29 16 27 16 27" stroke="#ffffff" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        <path d="M 12 27 C 14 29 16 27 16 27" stroke="${strokeColor}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
       </g>
     </svg>
   `.trim();
@@ -69,10 +74,10 @@ const getFishIcon = () => {
 };
 
 // fishIcon을 함수로 변경하여 필요할 때 생성
-const createFishIcon = () => {
+const createFishIcon = (isGrayscale: boolean = false) => {
   if (typeof window !== 'undefined' && window.google?.maps) {
     return {
-      url: getFishIcon(),
+      url: getFishIcon(isGrayscale),
       scaledSize: new google.maps.Size(48, 48),
       anchor: new google.maps.Point(24, 24),
     };
@@ -80,8 +85,8 @@ const createFishIcon = () => {
   // Google Maps API가 로드되지 않았을 때는 기본 path 사용
   return {
     path: "M 0,0 C -15,-20 -25,-15 -30,-5 C -35,5 -30,15 -20,20 C -10,25 0,25 10,20 C 20,15 25,5 20,-5 C 15,-15 5,-20 0,0 Z",
-    fillColor: "#4285F4",
-    fillOpacity: 1,
+    fillColor: isGrayscale ? "#808080" : "#4285F4",
+    fillOpacity: isGrayscale ? 0.5 : 1,
     strokeColor: "#ffffff",
     strokeWeight: 1.5,
     scale: 0.8,
@@ -310,22 +315,123 @@ function TooltipOverlay({
   fishData?: FishData[];
   onClose: () => void;
 }) {
+  // 초기 위치는 top-4 right-4 (16px)에 해당
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // 초기 위치 설정 (컴포넌트 마운트 시)
+  useEffect(() => {
+    if (tooltipRef.current && containerRef.current && position === null) {
+      const container = containerRef.current;
+      const tooltip = tooltipRef.current;
+      
+      // top-4 right-4 위치 계산 (16px from top and right)
+      // 컨테이너의 크기를 기준으로 계산
+      const initialX = container.offsetWidth - tooltip.offsetWidth - 16;
+      const initialY = 16;
+      
+      setPosition({ x: initialX, y: initialY });
+    }
+  }, [position]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // 닫기 버튼이나 내부 요소 클릭 시 드래그 방지
+    if ((e.target as HTMLElement).closest('button')) {
+      return;
+    }
+    if (!position || !containerRef.current) return;
+    
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    
+    setIsDragging(true);
+    // 드래그 시작 위치를 컨테이너 기준 상대 좌표로 계산
+    setDragStart({
+      x: e.clientX - containerRect.left - position.x,
+      y: e.clientY - containerRect.top - position.y,
+    });
+    e.stopPropagation();
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging && tooltipRef.current && containerRef.current) {
+        const container = containerRef.current;
+        const containerRect = container.getBoundingClientRect();
+        
+        // 마우스 위치를 컨테이너 기준 상대 좌표로 변환
+        const newX = e.clientX - containerRect.left - dragStart.x;
+        const newY = e.clientY - containerRect.top - dragStart.y;
+        
+        // 지도 컨테이너 내부로 제한
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+        const maxX = containerRect.width - tooltipRect.width;
+        const maxY = containerRect.height - tooltipRect.height;
+        
+        const clampedX = Math.max(0, Math.min(newX, maxX));
+        const clampedY = Math.max(0, Math.min(newY, maxY));
+        
+        setPosition({
+          x: clampedX,
+          y: clampedY,
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragStart]);
+
   return (
     <div
-      className={cn(
-        "relative bg-white text-gray-900",
-        "rounded-xl border border-gray-200 shadow-2xl",
-        "px-6 py-4 min-w-[360px] max-w-[420px]",
-        "animate-in fade-in-0 zoom-in-95",
-        "pointer-events-auto flex flex-col",
-        "backdrop-blur-sm"
-      )}
-      onWheel={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
-      onTouchMove={(e) => e.stopPropagation()}
+      ref={containerRef}
+      className="absolute inset-0 z-50"
+      style={{ pointerEvents: 'none' }}
     >
-      {/* 닫기 버튼 */}
+      <div
+        ref={tooltipRef}
+        className={cn(
+          "relative bg-white text-gray-900",
+          "rounded-xl border border-gray-200 shadow-2xl",
+          "px-6 py-4 min-w-[360px] max-w-[420px]",
+          "animate-in fade-in-0 zoom-in-95",
+          "pointer-events-auto flex flex-col",
+          "backdrop-blur-sm",
+          isDragging && "cursor-move"
+        )}
+        style={
+          position
+            ? {
+                position: 'absolute',
+                left: `${position.x}px`,
+                top: `${position.y}px`,
+              }
+            : {
+                position: 'absolute',
+                right: '16px',
+                top: '16px',
+              }
+        }
+        onWheel={(e) => e.stopPropagation()}
+        onMouseDown={handleMouseDown}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
+        {/* 닫기 버튼 */}
       <button
         onClick={onClose}
         className="absolute top-3 right-3 w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-900 flex items-center justify-center transition-colors z-20 shadow-sm"
@@ -347,8 +453,11 @@ function TooltipOverlay({
         </svg>
       </button>
 
-      {/* 제목 */}
-      <div className="pr-8 mb-2">
+      {/* 제목 - 드래그 핸들 */}
+      <div 
+        className="pr-8 mb-2 cursor-move select-none"
+        onMouseDown={handleMouseDown}
+      >
         <h3 className="text-xl font-bold text-gray-900">
           {title || "어류 정보"}
         </h3>
@@ -381,6 +490,7 @@ function TooltipOverlay({
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }
@@ -579,20 +689,41 @@ function DetailPanel({
   );
 }
 
+// 여러 마커의 fishData를 합치는 함수
+function mergeFishData(fishDataArrays: FishData[][]): FishData[] {
+  const merged = new Map<string, FishData>();
+  
+  fishDataArrays.forEach((fishData) => {
+    fishData.forEach((fish) => {
+      const key = `${fish.scientific_name}|${fish.common_name}`;
+      if (merged.has(key)) {
+        const existing = merged.get(key)!;
+        existing.reads_count += fish.reads_count;
+      } else {
+        merged.set(key, {
+          ...fish,
+        });
+      }
+    });
+  });
+  
+  return Array.from(merged.values()).sort((a, b) => b.reads_count - a.reads_count);
+}
+
 function MapContent({
   center = defaultCenter,
   zoom = 13,
   markers = [],
-  selectedMarkerIndex,
-  setSelectedMarkerIndex,
+  selectedMarkerIndices,
+  setSelectedMarkerIndices,
 }: {
   center: { lat: number; lng: number };
   zoom: number;
   markers: MarkerData[];
-  selectedMarkerIndex: number | null;
-  setSelectedMarkerIndex: (index: number | null) => void;
+  selectedMarkerIndices: number[];
+  setSelectedMarkerIndices: (indices: number[]) => void;
 }) {
-  const selectedMarker = selectedMarkerIndex !== null ? markers[selectedMarkerIndex] : null;
+  const selectedMarkers = selectedMarkerIndices.map((index) => markers[index]).filter(Boolean);
   const [mapBounds, setMapBounds] = useState<google.maps.LatLngBounds | null>(null);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
 
@@ -618,38 +749,92 @@ function MapContent({
   useEffect(() => {
     if (!mapInstance) return;
 
-    const listeners: google.maps.MapsEventListener[] = [
-      mapInstance.addListener("bounds_changed", updateBounds),
-      mapInstance.addListener("idle", updateBounds),
-      mapInstance.addListener("zoom_changed", updateBounds),
-      mapInstance.addListener("center_changed", updateBounds),
-    ];
+    // idle 이벤트만 사용하여 지도가 완전히 렌더링된 후에만 bounds 업데이트
+    const idleListener = mapInstance.addListener("idle", updateBounds);
 
-    // 초기 bounds 설정
-    updateBounds();
+    // 초기 bounds 설정 (약간의 지연 후)
+    const timeoutId = setTimeout(() => {
+      updateBounds();
+    }, 300);
 
     // 컴포넌트 언마운트 시 리스너 제거
     return () => {
-      listeners.forEach((listener) => {
-        google.maps.event.removeListener(listener);
-      });
+      clearTimeout(timeoutId);
+      google.maps.event.removeListener(idleListener);
     };
   }, [mapInstance, updateBounds]);
 
   // 현재 bounds 안에 있는 마커만 필터링
+  // bounds가 null이면 빈 배열 반환 (지도가 로드되기 전에는 표시하지 않음)
   const visibleMarkers = useMemo(() => {
-    if (!mapBounds) return markers;
+    if (!mapBounds || !mapInstance) return [];
+
+    // 지도 컨테이너의 실제 크기를 기반으로 더 정확한 bounds 계산
+    const ne = mapBounds.getNorthEast();
+    const sw = mapBounds.getSouthWest();
+    const latRange = ne.lat() - sw.lat();
+    const lngRange = ne.lng() - sw.lng();
+    
+    // 더 큰 padding (20%)을 사용하여 실제 화면에 보이는 영역만 포함
+    // Google Maps의 bounds는 실제 viewport보다 넓기 때문에 더 많이 축소 필요
+    const padding = 0.20;
+    const adjustedBounds = new google.maps.LatLngBounds(
+      new google.maps.LatLng(sw.lat() + latRange * padding, sw.lng() + lngRange * padding),
+      new google.maps.LatLng(ne.lat() - latRange * padding, ne.lng() - lngRange * padding)
+    );
 
     return markers.filter((marker) => {
       const latLng = new google.maps.LatLng(marker.position.lat, marker.position.lng);
-      return mapBounds.contains(latLng);
+      return adjustedBounds.contains(latLng);
     });
-  }, [markers, mapBounds]);
+  }, [markers, mapBounds, mapInstance]);
 
-  // 물고기 아이콘 생성 (한 번만 생성)
-  const fishIconInstance = useMemo(() => {
-    return createFishIcon();
-  }, []);
+  // 선택된 마커는 컬러, 선택되지 않은 마커는 흑백 아이콘 사용
+  // 단, 아무것도 선택하지 않은 상태에서는 모든 마커가 컬러
+  const getMarkerIcon = (index: number) => {
+    // 아무것도 선택하지 않은 상태면 모든 마커 컬러
+    if (selectedMarkerIndices.length === 0) {
+      return createFishIcon(false);
+    }
+    // 선택된 마커는 컬러, 선택되지 않은 마커는 흑백
+    const isSelected = selectedMarkerIndices.includes(index);
+    return createFishIcon(!isSelected); // 선택되지 않은 경우 흑백
+  };
+
+  // 선택된 마커들의 데이터 합치기
+  const mergedFishData = useMemo(() => {
+    if (selectedMarkers.length === 0) return [];
+    const allFishData = selectedMarkers
+      .map((marker) => marker.fishData || [])
+      .filter((data) => data.length > 0);
+    return mergeFishData(allFishData);
+  }, [selectedMarkers]);
+
+  // 합쳐진 데이터의 요약 생성
+  const mergedSummary = useMemo(() => {
+    if (mergedFishData.length === 0) return "";
+    const totalReads = mergedFishData.reduce((sum, fish) => sum + fish.reads_count, 0);
+    const speciesCount = mergedFishData.length;
+    const topSpecies = mergedFishData.slice(0, 3);
+    const taxa = selectedMarkers[0]?.taxa || "";
+
+    let summary = '';
+    if (taxa) {
+      const taxaKorean = translateTaxa(taxa);
+      summary += `분류: ${taxaKorean} (${taxa})\n`;
+    }
+    summary += `선택된 위치: ${selectedMarkers.length}개\n`;
+    summary += `총 ${speciesCount}종의 어류가 발견되었습니다.\n`;
+    summary += `총 읽기 수: ${totalReads.toLocaleString()}\n\n`;
+    summary += `주요 종류:\n`;
+    
+    topSpecies.forEach((fish, index) => {
+      summary += `${index + 1}. ${fish.common_name} (${fish.scientific_name})\n`;
+      summary += `   읽기 수: ${fish.reads_count.toLocaleString()}\n`;
+    });
+
+    return summary;
+  }, [mergedFishData, selectedMarkers]);
 
   return (
     <div className="flex h-[600px] gap-4">
@@ -661,7 +846,7 @@ function MapContent({
           zoom={zoom}
           onLoad={onMapLoad}
           onClick={() => {
-            setSelectedMarkerIndex(null);
+            setSelectedMarkerIndices([]);
           }}
           options={{
             zoomControl: true,
@@ -692,32 +877,43 @@ function MapContent({
             <Marker
               key={index}
               position={marker.position}
-              icon={fishIconInstance}
+              icon={getMarkerIcon(index)}
               title={marker.title || marker.label}
               onClick={() => {
-                setSelectedMarkerIndex(index);
+                // 토글 방식: 이미 선택된 마커면 해제, 아니면 추가
+                if (selectedMarkerIndices.includes(index)) {
+                  setSelectedMarkerIndices(selectedMarkerIndices.filter((i) => i !== index));
+                } else {
+                  setSelectedMarkerIndices([...selectedMarkerIndices, index]);
+                }
               }}
             />
           ))}
         </GoogleMap>
-        {selectedMarkerIndex !== null && selectedMarker && (
-          <div className="absolute top-4 right-4 z-50">
-            <TooltipOverlay
-              title={selectedMarker.title || selectedMarker.label}
-              fishData={selectedMarker.fishData}
-              onClose={() => setSelectedMarkerIndex(null)}
-            />
-          </div>
+        {selectedMarkers.length > 0 && (
+          <TooltipOverlay
+            title={
+              selectedMarkers.length === 1
+                ? selectedMarkers[0].title || selectedMarkers[0].label || "선택된 위치"
+                : `${selectedMarkers.length}개 위치 선택됨`
+            }
+            fishData={mergedFishData}
+            onClose={() => setSelectedMarkerIndices([])}
+          />
         )}
       </div>
 
       {/* 오른쪽 상세 정보 패널 - 항상 표시 */}
-      <div className="w-[17.6rem] flex-shrink-0">
-        {selectedMarker ? (
+      <div className="w-[17.6rem] flex-shrink-0 h-full">
+        {selectedMarkers.length > 0 ? (
           <DetailPanel
-            title={selectedMarker.title || selectedMarker.label}
-            summary={selectedMarker.summary}
-            fishData={selectedMarker.fishData}
+            title={
+              selectedMarkers.length === 1
+                ? selectedMarkers[0].title || selectedMarkers[0].label || "상세 정보"
+                : `${selectedMarkers.length}개 위치 합계`
+            }
+            summary={mergedSummary}
+            fishData={mergedFishData}
           />
         ) : (
           <MarkerListPanel
@@ -731,7 +927,12 @@ function MapContent({
                   m.position.lng === visibleMarker.position.lng
               );
               if (originalIndex !== -1) {
-                setSelectedMarkerIndex(originalIndex);
+                // 토글 방식으로 선택/해제
+                if (selectedMarkerIndices.includes(originalIndex)) {
+                  setSelectedMarkerIndices(selectedMarkerIndices.filter((i) => i !== originalIndex));
+                } else {
+                  setSelectedMarkerIndices([...selectedMarkerIndices, originalIndex]);
+                }
               }
             }}
           />
@@ -748,9 +949,7 @@ export default function GoogleMapComponent({
   markers = [],
 }: GoogleMapComponentProps) {
   const libraries: any[] = useMemo(() => ["places"], []);
-  const [selectedMarkerIndex, setSelectedMarkerIndex] = useState<number | null>(
-    null
-  );
+  const [selectedMarkerIndices, setSelectedMarkerIndices] = useState<number[]>([]);
 
   return (
     <LoadScript googleMapsApiKey={apiKey} libraries={libraries}>
@@ -758,8 +957,8 @@ export default function GoogleMapComponent({
         center={center}
         zoom={zoom}
         markers={markers}
-        selectedMarkerIndex={selectedMarkerIndex}
-        setSelectedMarkerIndex={setSelectedMarkerIndex}
+        selectedMarkerIndices={selectedMarkerIndices}
+        setSelectedMarkerIndices={setSelectedMarkerIndices}
       />
     </LoadScript>
   );
