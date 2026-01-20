@@ -2,6 +2,7 @@ export interface FishData {
   scientific_name: string;
   common_name: string;
   reads_count: number;
+  taxa?: string; // taxa 분류 정보 (선택적)
 }
 
 export function parseCSV(csvText: string): FishData[] {
